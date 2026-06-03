@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, Boolean
 from sqlalchemy.orm import DeclarativeBase, Session
 
@@ -20,7 +20,7 @@ class Post(Base):
     content = Column(Text, nullable=False)
     facebook_post_id = Column(String(50))
     published = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     published_at = Column(DateTime)
 
 
@@ -31,7 +31,7 @@ class NewsItem(Base):
     title = Column(String(500), nullable=False)
     url = Column(String(1000), unique=True, nullable=False)
     source = Column(String(100))
-    fetched_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    fetched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     used = Column(Boolean, default=False)
 
 
@@ -95,5 +95,5 @@ def mark_post_published(post_id: int, facebook_post_id: str):
         if post:
             post.published = True
             post.facebook_post_id = facebook_post_id
-            post.published_at = datetime.now(UTC)
+            post.published_at = datetime.now(timezone.utc)
             session.commit()
