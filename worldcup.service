@@ -1,0 +1,15 @@
+[Unit]
+Description=World Cup Facebook Bot
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/world-cup
+EnvironmentFile=/var/www/world-cup/.env
+ExecStart=/var/www/world-cup/.venv/bin/python main.py run
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
