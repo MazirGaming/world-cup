@@ -28,6 +28,7 @@ IMAGE_QUERIES = {
     "morning": ["world cup soccer celebration", "football stadium crowd", "soccer goal celebration"],
     "evening": ["soccer match preview", "football stadium night", "world cup fans"],
     "drama": ["soccer referee decision", "football controversy", "var review soccer"],
+    "buildup": ["world cup stadium 2026", "soccer fans excitement", "football world cup trophy", "world cup host city"],
 }
 
 
@@ -89,6 +90,32 @@ Yêu cầu:
 - Tone: kích thích tranh luận nhưng trung lập, dựa trên sự thật
 - Kết thúc bằng câu hỏi "Bạn đứng về phía nào?"
 - KHÔNG bịa đặt, KHÔNG xúc phạm cá nhân"""
+
+    return _call_openai(prompt)
+
+
+def generate_buildup_post(news_items: list[NewsItem]) -> str:
+    news_text = _format_news(news_items)
+
+    prompt = f"""Viết bài Facebook về không khí chuẩn bị cho World Cup 2026 sắp diễn ra.
+
+TIN TỨC LIÊN QUAN:
+{news_text}
+
+Chủ đề có thể chọn (ưu tiên cái có tin tức nhất):
+- Thông tin sân vận động đăng cai (Mỹ, Canada, Mexico)
+- Công bố danh sách cầu thủ / đội hình dự kiến các đội
+- Thông tin vé, cách mua vé, giá vé
+- CĐV chuẩn bị như thế nào, hành trình đi xem
+- Trận giao hữu chuẩn bị của các đội
+- Phát biểu đáng chú ý của HLV/cầu thủ trước giải
+- Thống kê, lịch sử, kỷ lục World Cup thú vị
+
+Yêu cầu:
+- Dòng đầu tiêu đề GIẬT GÂN IN HOA, kích thích sự háo hức chờ đợi
+- Nội dung hấp dẫn, tạo cảm giác hồi hộp đếm ngược đến World Cup
+- Kết thúc bằng câu hỏi tương tác (đội yêu thích, dự đoán, kế hoạch xem...)
+- KHÔNG bịa đặt, chỉ dùng thông tin từ tin tức đã cung cấp"""
 
     return _call_openai(prompt)
 

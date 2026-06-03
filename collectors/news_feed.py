@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 WORLD_CUP_KEYWORDS = [
     "world cup", "fifa", "2026", "mundial",
     "goal", "penalty", "red card", "var", "offside",
+    "stadium", "squad", "lineup", "roster", "ticket",
+    "friendly", "warm-up", "pre-tournament", "coach", "manager",
+    "transfer", "injury", "form", "qualifier", "host city",
+    "metlife", "rose bowl", "azteca", "canada", "mexico",
 ]
 
 
