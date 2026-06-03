@@ -1,5 +1,6 @@
 import logging
 import httpx
+from typing import Optional
 from config.settings import (
     FACEBOOK_PAGE_ID,
     FACEBOOK_ACCESS_TOKEN,
@@ -10,7 +11,7 @@ from config.settings import (
 logger = logging.getLogger(__name__)
 
 
-def publish_post(content: str, image_url: str | None = None) -> str | None:
+def publish_post(content: str, image_url: Optional[str] = None) -> Optional[str]:
     if not content:
         logger.warning("Empty content, skipping publish")
         return None
@@ -24,7 +25,7 @@ def publish_post(content: str, image_url: str | None = None) -> str | None:
     return _publish_text(content)
 
 
-def _publish_with_photo(content: str, image_url: str) -> str | None:
+def _publish_with_photo(content: str, image_url: str) -> Optional[str]:
     url = f"{FACEBOOK_API_BASE}/{FACEBOOK_PAGE_ID}/photos"
     try:
         resp = httpx.post(
@@ -44,7 +45,7 @@ def _publish_with_photo(content: str, image_url: str) -> str | None:
         return None
 
 
-def _publish_text(content: str) -> str | None:
+def _publish_text(content: str) -> Optional[str]:
     url = f"{FACEBOOK_API_BASE}/{FACEBOOK_PAGE_ID}/feed"
     try:
         resp = httpx.post(

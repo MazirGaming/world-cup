@@ -2,6 +2,7 @@ import logging
 import os
 import random
 import httpx
+from typing import Optional
 from openai import OpenAI
 from storage.database import NewsItem
 
@@ -92,7 +93,7 @@ Yêu cầu:
     return _call_openai(prompt)
 
 
-def generate_image(post_type: str) -> str | None:
+def generate_image(post_type: str) -> Optional[str]:
     queries = IMAGE_QUERIES.get(post_type, IMAGE_QUERIES["morning"])
     query = random.choice(queries)
     try:
