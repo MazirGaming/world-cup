@@ -10,10 +10,30 @@ from storage.database import NewsItem
 WORLD_CUP_START = date(2026, 6, 11)
 HASHTAGS = "#WorldCup2026 #TramWorldCup #BongDa #FIFA2026 #Football"
 
+_BOLD_MAP = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+    "𝗔𝗕𝗖𝗗𝗘𝗙𝗚𝗛𝗜𝗝𝗞𝗟𝗠𝗡𝗢𝗣𝗤𝗥𝗦𝗧𝗨𝗩𝗪𝗫𝗬𝗭𝗮𝗯𝗰𝗱𝗲𝗳𝗴𝗵𝗶𝗷𝗸𝗹𝗺𝗻𝗼𝗽𝗾𝗿𝘀𝘁𝘂𝘃𝘄𝘅𝘆𝘇𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵"
+)
+
+
+def to_bold(text: str) -> str:
+    return text.translate(_BOLD_MAP)
+
 
 def days_until_wc() -> int:
     delta = WORLD_CUP_START - date.today()
     return max(0, delta.days)
+
+
+def apply_formatting(content: str) -> str:
+    """In đậm dòng tiêu đề và thêm đường kẻ phân cách."""
+    lines = content.split("\n")
+    if not lines:
+        return content
+    lines[0] = to_bold(lines[0])
+    # Thêm đường kẻ sau tiêu đề
+    lines.insert(1, "━━━━━━━━━━━━━━━━━━━━")
+    return "\n".join(lines)
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +191,7 @@ def _call_openai(prompt: str) -> str:
             ],
         )
         content = response.choices[0].message.content or ""
+        content = apply_formatting(content)
         logger.info("Generated post (%d chars)", len(content))
         return content
     except Exception as e:
