@@ -54,14 +54,14 @@ def save_news_items(items: list[dict]):
     with get_session() as session:
         for item in items:
             try:
-                session.add(NewsItem(
-                    title=item["title"],
-                    url=item["url"],
-                    source=item.get("source", ""),
-                ))
-                session.flush()
+                with session.begin_nested():
+                    session.add(NewsItem(
+                        title=item["title"],
+                        url=item["url"],
+                        source=item.get("source", ""),
+                    ))
             except IntegrityError:
-                session.rollback()
+                pass
         session.commit()
 
 
