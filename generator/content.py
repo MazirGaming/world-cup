@@ -2,9 +2,18 @@ import logging
 import os
 import random
 import httpx
+from datetime import date
 from typing import Optional
 from openai import OpenAI
 from storage.database import NewsItem
+
+WORLD_CUP_START = date(2026, 6, 11)
+HASHTAGS = "#WorldCup2026 #TramWorldCup #BongDa #FIFA2026 #Football"
+
+
+def days_until_wc() -> int:
+    delta = WORLD_CUP_START - date.today()
+    return max(0, delta.days)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +31,8 @@ Yêu cầu:
 - Nội dung phải dựa trên sự kiện có thật, không bịa đặt
 - Không xúc phạm cá nhân, không kỳ thị, không vi phạm pháp luật
 - Độ dài phần nội dung: 150-250 từ, phù hợp Facebook
-- Kết thúc bài bằng câu hỏi tương tác để tăng comment"""
+- Kết thúc bài bằng câu hỏi tương tác để tăng comment
+- Dòng CUỐI CÙNG chỉ gồm các hashtag: #WorldCup2026 #TramWorldCup #BongDa #FIFA2026 #Football"""
 
 IMAGE_QUERIES = {
     "morning": ["world cup soccer celebration", "football stadium crowd", "soccer goal celebration"],
@@ -96,8 +106,14 @@ Yêu cầu:
 
 def generate_buildup_post(news_items: list[NewsItem]) -> str:
     news_text = _format_news(news_items)
+    days_left = days_until_wc()
+    countdown = f"⏳ Còn {days_left} ngày đến World Cup 2026!" if days_left > 0 else "🔥 World Cup 2026 đã bắt đầu!"
 
     prompt = f"""Viết bài Facebook về không khí chuẩn bị cho World Cup 2026 sắp diễn ra.
+
+ĐẾM NGƯỢC: {countdown}
+
+
 
 TIN TỨC LIÊN QUAN:
 {news_text}
