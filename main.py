@@ -22,8 +22,8 @@ def main():
         "command",
         nargs="?",
         default="run",
-        choices=["run", "morning", "evening", "drama"],
-        help="run: start scheduler | morning/evening/drama: chạy thủ công 1 job",
+        choices=["run", "morning", "spotlight", "drama", "factoid", "debate", "evening"],
+        help="run: start scheduler | các job khác: chạy thủ công",
     )
     args = parser.parse_args()
 
@@ -33,11 +33,17 @@ def main():
         from scheduler import start
         start()
     else:
-        from jobs import run_morning_job, run_evening_job, run_drama_job
+        from jobs import (
+            run_morning_job, run_spotlight_job, run_drama_job,
+            run_factoid_job, run_debate_job, run_evening_job,
+        )
         jobs = {
             "morning": run_morning_job,
-            "evening": run_evening_job,
+            "spotlight": run_spotlight_job,
             "drama": run_drama_job,
+            "factoid": run_factoid_job,
+            "debate": run_debate_job,
+            "evening": run_evening_job,
         }
         jobs[args.command]()
 

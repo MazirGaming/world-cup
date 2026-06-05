@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 import feedparser
 import httpx
 from bs4 import BeautifulSoup
@@ -14,6 +15,11 @@ WORLD_CUP_KEYWORDS = [
     "friendly", "warm-up", "pre-tournament", "coach", "manager",
     "transfer", "injury", "form", "qualifier", "host city",
     "metlife", "rose bowl", "azteca", "canada", "mexico",
+    "ronaldo", "messi", "mbappe", "haaland", "vinicius", "bellingham", "yamal",
+    "infantino", "gianni", "fifa president",
+    "argentina", "brazil", "france", "england", "portugal", "spain",
+    "group stage", "knockout", "semifinal", "final", "draw",
+    "sofistadium", "sofi", "at&t", "venue", "host",
 ]
 
 
@@ -43,11 +49,22 @@ def _fetch_feed(feed_url: str) -> list[dict]:
             if not _is_world_cup_related(title + " " + summary):
                 continue
 
+            # Thử lấy ảnh từ RSS media tags
+            image_url = None
+            if hasattr(entry, "media_content") and entry.media_content:
+                image_url = entry.media_content[0].get("url")
+            elif hasattr(entry, "enclosures") and entry.enclosures:
+                for enc in entry.enclosures:
+                    if enc.get("type", "").startswith("image/"):
+                        image_url = enc.get("href")
+                        break
+
             items.append({
                 "title": title,
                 "url": url,
                 "summary": _clean_html(summary),
                 "source": feed.feed.get("title", feed_url),
+                "image_url": image_url,
             })
         return items
     except Exception as e:
@@ -55,14 +72,31 @@ def _fetch_feed(feed_url: str) -> list[dict]:
         return []
 
 
+def fetch_article_image(url: str) -> Optional[str]:
+    """Lấy og:image từ bài báo — ảnh thực tế của bài viết."""
+    try:
+        resp = httpx.get(url, timeout=8, follow_redirects=True, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; WorldCupBot/1.0)"
+        })
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "lxml")
+        for prop in ("og:image", "twitter:image"):
+            tag = soup.find("meta", property=prop) or soup.find("meta", attrs={"name": prop})
+            if tag and tag.get("content"):
+                return tag["content"]
+        return None
+    except Exception:
+        return None
+
+
 def fetch_article_content(url: str) -> str:
+    """Lấy nội dung bài báo để AI có thêm dữ liệu thực tế."""
     try:
         resp = httpx.get(url, timeout=10, follow_redirects=True, headers={
             "User-Agent": "Mozilla/5.0 (compatible; WorldCupBot/1.0)"
         })
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
-        # Remove scripts and styles
         for tag in soup(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
         paragraphs = soup.find_all("p")
