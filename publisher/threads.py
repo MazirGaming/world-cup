@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 import httpx
 from typing import Optional
@@ -7,7 +8,7 @@ from config.settings import THREADS_USER_ID, THREADS_ACCESS_TOKEN, DRY_RUN
 logger = logging.getLogger(__name__)
 
 THREADS_API_BASE = "https://graph.threads.net/v1.0"
-THREADS_MAX_CHARS = 490
+THREADS_MAX_CHARS = 420  # conservative — bold Unicode chars may count double
 THREADS_HASHTAGS = "#WorldCup2026 #BongDa"
 
 
@@ -35,10 +36,9 @@ def publish_to_threads(content: str, image_url: Optional[str] = None) -> Optiona
 
 
 def _trim_for_threads(content: str) -> str:
-    """Cắt gọn nội dung cho Threads (tối đa 490 ký tự + hashtags)."""
-    # Bỏ hashtag cuối bài (sẽ thêm lại phiên bản ngắn)
+    """Cắt gọn nội dung cho Threads, cắt theo dòng để tránh cắt giữa list item."""
     lines = content.split("\n")
-    # Dòng cuối thường là hashtag dài — loại bỏ
+    # Bỏ dòng hashtag dài cuối bài
     if lines and lines[-1].startswith("#"):
         lines = lines[:-1]
     body = "\n".join(lines).strip()
@@ -49,13 +49,19 @@ def _trim_for_threads(content: str) -> str:
     if len(body) <= max_body:
         return body + suffix
 
-    # Cắt ở ranh giới câu gần nhất
+    # Cắt ở ranh giới DÒNG gần nhất — tránh cắt giữa bullet/list item
     truncated = body[:max_body]
-    last_period = max(truncated.rfind("。"), truncated.rfind(". "), truncated.rfind("! "), truncated.rfind("? "), truncated.rfind(".\n"))
-    if last_period > max_body // 2:
-        truncated = truncated[: last_period + 1]
+    last_newline = truncated.rfind("\n")
+    if last_newline > max_body // 3:
+        truncated = truncated[:last_newline].rstrip()
     else:
         truncated = truncated.rstrip() + "..."
+
+    # Xóa dòng header cô đơn ở cuối (VD: "🔴 TEAM B:" không có nội dung)
+    lines = truncated.split("\n")
+    while lines and re.match(r'^[🔵🔴⚽🏆].*[:：]?\s*$', lines[-1].strip()):
+        lines.pop()
+    truncated = "\n".join(lines).rstrip()
 
     return truncated + suffix
 
