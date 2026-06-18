@@ -33,9 +33,9 @@ NEWS_FEEDS = [
 ]
 
 # Schedule (Vietnam time UTC+7)
-SCHEDULE_MORNING = "07:00"    # Tổng kết kết quả đêm qua
-SCHEDULE_SPOTLIGHT = "09:00"  # Spotlight cầu thủ ngôi sao
+SCHEDULE_SPOTLIGHT = "07:00"  # Spotlight cầu thủ ngôi sao
+SCHEDULE_FACTOID = "09:00"    # Fact thú vị / sân / nước đăng cai
 SCHEDULE_DRAMA = "11:00"      # Drama / tranh cãi
-SCHEDULE_FACTOID = "13:30"    # Fact thú vị / sân / nước đăng cai
+SCHEDULE_MORNING = "13:00"    # Recap tỉ số (đa số trận đá đêm/sáng → trưa đã đủ kết quả)
 SCHEDULE_DEBATE = "15:30"     # Tranh luận 2 phe
 SCHEDULE_EVENING = "18:00"    # Preview trận tối nay

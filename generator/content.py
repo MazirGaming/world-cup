@@ -89,9 +89,9 @@ def generate_morning_post(matches: list, news_items: list, extra_context: str = 
     if not matches and not news_items:
         return "", ""
     matches_text = _format_matches(matches) if matches else "No matches last night."
-    prompt = f"""Write a morning recap post for World Cup 2026.
+    prompt = f"""Write a results recap post for World Cup 2026.
 
-RESULTS LAST NIGHT (use ONLY this data, add nothing):
+LATEST RESULTS (use ONLY this data, add nothing):
 {matches_text}
 
 NEWS:
