@@ -15,6 +15,9 @@ from generator.content import (
     generate_image,
     STAR_PLAYERS,
 )
+from generator.images import wikipedia_image, country_flag
+from generator.cards import render_results_card, render_fixtures_card, render_breaking_card
+from publisher.imagehost import upload_public
 from publisher.facebook import publish_post
 from publisher.threads import publish_to_threads
 from storage.database import get_unused_news, mark_news_used, save_post, mark_post_published
@@ -30,6 +33,30 @@ def _has_matches_tonight(matches: list[dict]) -> bool:
     return any(m["status"] in ("SCHEDULED", "TIMED") for m in matches)
 
 
+def _card_url(card_path: str) -> Optional[str]:
+    """Upload card PNG -> public URL (cho cả Facebook & Threads)."""
+    if not card_path:
+        return None
+    return upload_public(card_path)
+
+
+def _resolve_image(subject: str, post_type: str, news: list, pexels_hint: str = "") -> Optional[str]:
+    """Ảnh bám sát nội dung: Wikipedia(chủ thể) → cờ quốc gia → ảnh bài báo → Pexels."""
+    if subject:
+        img = wikipedia_image(subject)
+        if img and _is_valid_image_url(img):
+            logger.info("Image: Wikipedia '%s'", subject)
+            return img
+        flag = country_flag(subject)
+        if flag and _is_valid_image_url(flag):
+            logger.info("Image: flag for '%s'", subject)
+            return flag
+    art = _get_article_image(news)
+    if art:
+        return art
+    return generate_image(post_type, hint=pexels_hint)
+
+
 def _get_article_image(news: list) -> Optional[str]:
     """Lấy og:image từ bài báo, validate trước khi dùng."""
     for item in news[:3]:
@@ -42,7 +69,7 @@ def _get_article_image(news: list) -> Optional[str]:
 
 def _is_valid_image_url(url: str) -> bool:
     # Facebook/Threads reject CDN processing URLs with complex params
-    if len(url) > 300:
+    if len(url) > 400:
         return False
     blocked = ["base64", "overlay", "precrop", "enable=upscale", "watermark"]
     if any(p in url for p in blocked):
@@ -63,7 +90,7 @@ def _enrich_news_with_body(news: list) -> str:
     body = fetch_article_content(news[0].url)
     if body:
         source = news[0].source or ""
-        return f"\n\nNỘI DUNG BÀI BÁO [{source}]:\n{body[:1000]}"
+        return f"\n\nARTICLE CONTENT [{source}]:\n{body[:1000]}"
     return ""
 
 
@@ -89,17 +116,18 @@ def run_morning_job():
 
         if _had_real_matches(matches):
             extra = _enrich_news_with_body(news)
-            content = generate_morning_post(matches, news, extra_context=extra)
+            content, subject = generate_morning_post(matches, news, extra_context=extra)
             post_type = "morning"
+            image_url = _card_url(render_results_card(matches)) or _resolve_image(subject, post_type, news)
         else:
             if not news:
                 logger.warning("No news, skipping morning post")
                 return
             extra = _enrich_news_with_body(news)
-            content = generate_buildup_post(news, extra_context=extra)
+            content, subject = generate_buildup_post(news, extra_context=extra)
             post_type = "buildup"
+            image_url = _resolve_image(subject, post_type, news)
 
-        image_url = _get_article_image(news) or generate_image(post_type)
         _publish(post_type, content, image_url, news)
         logger.info("=== Morning job done ===")
     except Exception:
@@ -113,9 +141,9 @@ def run_spotlight_job():
         news = get_unused_news(limit=6)
         player = random.choice(STAR_PLAYERS)
         extra = _enrich_news_with_body(news)
-        content = generate_spotlight_post(news, player, extra_context=extra)
-        # Ảnh bài báo ưu tiên, fallback Pexels query theo cầu thủ
-        image_url = _get_article_image(news) or generate_image("spotlight", hint=player["query"])
+        content, subject = generate_spotlight_post(news, player, extra_context=extra)
+        # subject = Wikipedia title của cầu thủ → ảnh chính xác
+        image_url = _resolve_image(subject, "spotlight", news, pexels_hint=player["name"])
         _publish("spotlight", content, image_url, news)
         logger.info("=== Spotlight job done (player=%s) ===", player["name"])
     except Exception:
@@ -131,8 +159,9 @@ def run_drama_job():
             logger.warning("No news, skipping drama post")
             return
         extra = _enrich_news_with_body(news)
-        content = generate_drama_post(news, extra_context=extra)
-        image_url = _get_article_image(news) or generate_image("drama")
+        content, subject = generate_drama_post(news, extra_context=extra)
+        headline = content.split("\n")[0] if content else ""
+        image_url = _card_url(render_breaking_card(headline, "HOT TOPIC")) or _resolve_image(subject, "drama", news)
         _publish("drama", content, image_url, news)
         logger.info("=== Drama job done ===")
     except Exception:
@@ -145,8 +174,8 @@ def run_factoid_job():
         fetch_all_news()
         news = get_unused_news(limit=6)
         extra = _enrich_news_with_body(news)
-        content = generate_factoid_post(news, extra_context=extra)
-        image_url = _get_article_image(news) or generate_image("factoid")
+        content, subject = generate_factoid_post(news, extra_context=extra)
+        image_url = _resolve_image(subject, "factoid", news)
         _publish("factoid", content, image_url, news)
         logger.info("=== Factoid job done ===")
     except Exception:
@@ -159,8 +188,8 @@ def run_debate_job():
         fetch_all_news()
         news = get_unused_news(limit=6)
         extra = _enrich_news_with_body(news)
-        content = generate_debate_post(news, extra_context=extra)
-        image_url = _get_article_image(news) or generate_image("debate")
+        content, subject = generate_debate_post(news, extra_context=extra)
+        image_url = _resolve_image(subject, "debate", news)
         _publish("debate", content, image_url, news)
         logger.info("=== Debate job done ===")
     except Exception:
@@ -176,17 +205,17 @@ def run_evening_job():
 
         if _has_matches_tonight(matches):
             extra = _enrich_news_with_body(news)
-            content = generate_evening_post(matches, news, extra_context=extra)
+            content, subject = generate_evening_post(matches, news, extra_context=extra)
             post_type = "evening"
+            image_url = _card_url(render_fixtures_card(matches)) or _resolve_image(subject, post_type, news)
         else:
             if not news:
                 logger.warning("No news, skipping evening post")
                 return
             extra = _enrich_news_with_body(news)
-            content = generate_buildup_post(news, extra_context=extra)
+            content, subject = generate_buildup_post(news, extra_context=extra)
             post_type = "buildup"
-
-        image_url = _get_article_image(news) or generate_image(post_type)
+            image_url = _resolve_image(subject, post_type, news)
         _publish(post_type, content, image_url, news)
         logger.info("=== Evening job done ===")
     except Exception:

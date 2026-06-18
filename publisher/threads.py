@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 THREADS_API_BASE = "https://graph.threads.net/v1.0"
 THREADS_MAX_CHARS = 420  # conservative — bold Unicode chars may count double
-THREADS_HASHTAGS = "#WorldCup2026 #BongDa"
+THREADS_HASHTAGS = "#WorldCup2026 #Football"
 
 
 def publish_to_threads(content: str, image_url: Optional[str] = None) -> Optional[str]:

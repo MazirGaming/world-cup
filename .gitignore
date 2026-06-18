@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 *.db
 *.log
+
+# Runtime-generated cards + cached flags (fonts ARE committed)
+cards/*.png
+assets/flags/*.png

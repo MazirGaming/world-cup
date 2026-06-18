@@ -1,9 +1,10 @@
+import json
 import logging
 import os
 import random
 import httpx
 from datetime import date
-from typing import Optional
+from typing import Optional, Tuple
 from openai import OpenAI
 from storage.database import NewsItem
 
@@ -14,17 +15,18 @@ _BOLD_MAP = str.maketrans(
     "𝗔𝗕𝗖𝗗𝗘𝗙𝗚𝗛𝗜𝗝𝗞𝗟𝗠𝗡𝗢𝗣𝗤𝗥𝗦𝗧𝗨𝗩𝗪𝗫𝗬𝗭𝗮𝗯𝗰𝗱𝗲𝗳𝗴𝗵𝗶𝗷𝗸𝗹𝗺𝗻𝗼𝗽𝗾𝗿𝘀𝘁𝘂𝘃𝘄𝘅𝘆𝘇𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵"
 )
 
+# name, team, Wikipedia article title (for accurate photos)
 STAR_PLAYERS = [
-    {"name": "Cristiano Ronaldo", "team": "Bồ Đào Nha", "query": "Cristiano Ronaldo soccer"},
-    {"name": "Lionel Messi", "team": "Argentina", "query": "Lionel Messi football"},
-    {"name": "Kylian Mbappé", "team": "Pháp", "query": "Mbappe soccer France"},
-    {"name": "Vinicius Jr", "team": "Brazil", "query": "Vinicius Jr soccer Brazil"},
-    {"name": "Erling Haaland", "team": "Na Uy", "query": "Haaland soccer Norway"},
-    {"name": "Jude Bellingham", "team": "Anh", "query": "Bellingham soccer England"},
-    {"name": "Lamine Yamal", "team": "Tây Ban Nha", "query": "Yamal soccer Spain"},
-    {"name": "Harry Kane", "team": "Anh", "query": "Harry Kane soccer England"},
-    {"name": "Pedri", "team": "Tây Ban Nha", "query": "Pedri soccer Spain"},
-    {"name": "Neymar Jr", "team": "Brazil", "query": "Neymar soccer Brazil"},
+    {"name": "Cristiano Ronaldo", "team": "Portugal", "wiki": "Cristiano Ronaldo"},
+    {"name": "Lionel Messi", "team": "Argentina", "wiki": "Lionel Messi"},
+    {"name": "Kylian Mbappé", "team": "France", "wiki": "Kylian Mbappé"},
+    {"name": "Vinicius Junior", "team": "Brazil", "wiki": "Vinícius Júnior"},
+    {"name": "Erling Haaland", "team": "Norway", "wiki": "Erling Haaland"},
+    {"name": "Jude Bellingham", "team": "England", "wiki": "Jude Bellingham"},
+    {"name": "Lamine Yamal", "team": "Spain", "wiki": "Lamine Yamal"},
+    {"name": "Harry Kane", "team": "England", "wiki": "Harry Kane"},
+    {"name": "Pedri", "team": "Spain", "wiki": "Pedri"},
+    {"name": "Rodrygo", "team": "Brazil", "wiki": "Rodrygo"},
 ]
 
 
@@ -33,8 +35,7 @@ def to_bold(text: str) -> str:
 
 
 def days_until_wc() -> int:
-    delta = WORLD_CUP_START - date.today()
-    return max(0, delta.days)
+    return max(0, (WORLD_CUP_START - date.today()).days)
 
 
 def apply_formatting(content: str) -> str:
@@ -53,177 +54,172 @@ TEXT_MODEL = "gpt-4o-mini"
 PEXELS_API_KEY = os.environ["PEXELS_API_KEY"]
 PEXELS_SEARCH_URL = "https://api.pexels.com/v1/search"
 
-SYSTEM_PROMPT = """Bạn là biên tập viên thể thao cho fanpage bóng đá Việt Nam mùa World Cup 2026.
-Phong cách: sôi nổi, táo bạo, ngắn gọn, có emoji phù hợp.
+SYSTEM_PROMPT = """You are a sharp, energetic football editor for the World Cup 2026 fanpage "Tram World Cup".
+Write engaging posts in ENGLISH.
 
-QUY TẮC BẮT BUỘC:
-- Dòng ĐẦU TIÊN: tiêu đề IN HOA, dưới 12 từ, emoji, giật gân
-- Nội dung: 80-120 từ — NGẮN GỌN, không dài dòng, không liệt kê dài
-- NGHIÊM CẤM bịa tỉ số, thẻ đỏ/vàng, kết quả, hay sự kiện cụ thể không có trong dữ liệu đầu vào
-- Nếu dữ liệu không đủ → phân tích/góc nhìn, KHÔNG đặt ra sự kiện giả
-- Kết thúc bằng 1 câu hỏi ngắn kích thích comment
-- Dòng CUỐI: #WorldCup2026 #TramWorldCup #BongDa"""
+You MUST reply with ONLY valid JSON in this exact shape:
+{"post": "<the full post text>", "image_subject": "<best photo subject>"}
+
+Rules for "post":
+- First line: a punchy ALL-CAPS headline, under 12 words, with a fitting emoji
+- Body: 70-110 words, concise and punchy — NO filler, no long lists
+- NEVER invent scores, cards, results, injuries, quotes, or events not in the provided data
+- If data is thin, give analysis/angle — do NOT fabricate facts
+- End with ONE short question that drives comments
+- Last line EXACTLY: #WorldCup2026 #TramWorldCup #Football
+
+Rules for "image_subject":
+- The single most relevant REAL subject for an accompanying photo, as an English Wikipedia article title
+- Prefer a specific person (e.g. "Cristiano Ronaldo"), then a team ("Brazil national football team"), stadium, or country
+- Be specific to the post's actual topic — never generic like "soccer" or "football"
+"""
 
 IMAGE_QUERIES = {
     "morning": ["world cup soccer match", "football stadium celebration", "soccer goal crowd"],
     "evening": ["football stadium night lights", "soccer match evening", "world cup fans night"],
-    "drama": ["soccer referee red card", "football VAR review", "soccer players arguing"],
+    "drama": ["soccer referee decision", "football VAR review", "soccer players reaction"],
     "buildup": ["world cup trophy 2026", "soccer fans excitement", "football stadium USA"],
-    "spotlight": ["soccer star portrait", "football player stadium", "soccer world cup player"],
-    "factoid": ["football stadium aerial view", "world cup host city", "soccer stadium architecture"],
-    "debate": ["soccer fans debate", "football supporters rival", "soccer stadium atmosphere"],
-    "heatcheck": ["soccer night celebration", "football fans late night", "world cup night game"],
+    "spotlight": ["soccer star action", "football player stadium", "world cup player"],
+    "factoid": ["football stadium aerial", "world cup host city", "soccer stadium architecture"],
+    "debate": ["soccer fans crowd", "football supporters", "soccer stadium atmosphere"],
 }
 
 
-def generate_morning_post(matches: list[dict], news_items: list[NewsItem], extra_context: str = "") -> str:
+def generate_morning_post(matches: list, news_items: list, extra_context: str = "") -> Tuple[str, str]:
     if not matches and not news_items:
-        return ""
-    matches_text = _format_matches(matches) if matches else "Không có trận đấu đêm qua."
-    news_text = _format_news(news_items)
-    prompt = f"""Viết bài Facebook buổi sáng tổng kết World Cup 2026.
+        return "", ""
+    matches_text = _format_matches(matches) if matches else "No matches last night."
+    prompt = f"""Write a morning recap post for World Cup 2026.
 
-KẾT QUẢ ĐÊM QUA (CHỈ dùng dữ liệu này, không thêm chi tiết):
+RESULTS LAST NIGHT (use ONLY this data, add nothing):
 {matches_text}
 
-TIN TỨC:
-{news_text}{extra_context}
+NEWS:
+{_format_news(news_items)}{extra_context}
 
-Yêu cầu: Tổng kết đúng kết quả trên, nêu 1-2 điểm nổi bật, KHÔNG thêm thẻ đỏ/vàng/drama nếu không có trong dữ liệu."""
+Recap the results above accurately, highlight 1-2 standout moments. Do NOT add cards/drama not in the data."""
     return _call_openai(prompt)
 
 
-def generate_evening_post(matches: list[dict], news_items: list[NewsItem], extra_context: str = "") -> str:
+def generate_evening_post(matches: list, news_items: list, extra_context: str = "") -> Tuple[str, str]:
     if not matches:
-        return ""
-    matches_text = _format_matches(matches)
-    news_text = _format_news(news_items)
-    prompt = f"""Viết bài Facebook preview các trận World Cup 2026 tối nay.
+        return "", ""
+    prompt = f"""Write an evening preview post for tonight's World Cup 2026 matches.
 
-CÁC TRẬN TỐI NAY:
-{matches_text}
+TONIGHT'S MATCHES:
+{_format_matches(matches)}
 
-TIN TỨC:
-{news_text}{extra_context}
+NEWS:
+{_format_news(news_items)}{extra_context}
 
-Yêu cầu: Preview ngắn từng cặp đấu, dự đoán 1 trận hot nhất, tạo không khí hứng khởi."""
+Preview each fixture briefly, predict the hottest one, build excitement."""
     return _call_openai(prompt)
 
 
-def generate_drama_post(news_items: list[NewsItem], extra_context: str = "") -> str:
+def generate_drama_post(news_items: list, extra_context: str = "") -> Tuple[str, str]:
     if not news_items:
-        return ""
-    news_text = _format_news(news_items)
-    prompt = f"""Viết bài Facebook drama/tranh cãi về World Cup 2026.
+        return "", ""
+    angles = [
+        "a controversial refereeing / VAR decision",
+        "a bold statement or interview from a player or manager",
+        "a surprising form swing, injury, or selection call",
+        "a tactical or lineup controversy",
+        "an off-pitch story (fans, FIFA, host-city, scheduling)",
+    ]
+    angle = random.choice(angles)
+    prompt = f"""Write a debate-driving "hot topic" post about World Cup 2026, based ONLY on the news below.
 
-TIN TỨC (CHỈ dùng thông tin này — không bịa thêm sự kiện):
-{news_text}{extra_context}
+NEWS (use only what's here — do not fabricate events):
+{_format_news(news_items)}{extra_context}
 
-Yêu cầu:
-- Chọn ĐÚNG 1 sự kiện có thật trong tin tức trên
-- 2 luồng ý kiến đối lập rõ ràng
-- Tone mạnh, kích thích tranh luận
-- Kết: "Bạn đứng về phía nào? 👇" """
+Instructions:
+- Pick the single most interesting REAL story, ideally around: {angle}
+- Do NOT default to a Ronaldo-vs-Messi comparison unless the news is specifically about that
+- Present two genuinely opposing viewpoints, sharp and provocative but fact-based
+- End: "Whose side are you on? 👇" """
     return _call_openai(prompt)
 
 
-def generate_spotlight_post(news_items: list[NewsItem], player: dict, extra_context: str = "") -> str:
-    news_text = _format_news(news_items)
+def generate_spotlight_post(news_items: list, player: dict, extra_context: str = "") -> Tuple[str, str]:
+    name, team = player["name"], player["team"]
+    prompt = f"""Write a player spotlight post about {name} ({team}) at World Cup 2026.
+
+RELATED NEWS (use if it mentions {name}):
+{_format_news(news_items)}{extra_context}
+
+Instructions:
+- Focus on {name}: current form, expectations, World Cup story
+- If there's no news about this player, use well-known real facts — do NOT invent match results or quotes
+- Closing question must be directly about {name}"""
+    post, _ = _call_openai(prompt)
+    # Override image subject with the player's exact Wikipedia title for accurate photo
+    return post, player["wiki"]
+
+
+def generate_factoid_post(news_items: list, extra_context: str = "") -> Tuple[str, str]:
     days_left = days_until_wc()
-    countdown = f"⏳ Còn {days_left} ngày đến World Cup 2026!" if days_left > 0 else "🔥 World Cup 2026 đang diễn ra!"
-    name = player["name"]
-    team = player["team"]
-
-    prompt = f"""Viết bài Facebook spotlight về {name} ({team}) tại World Cup 2026.
-
-{countdown}
-
-TIN TỨC LIÊN QUAN (dùng nếu có nhắc đến {name}):
-{news_text}{extra_context}
-
-Yêu cầu:
-- Tập trung vào {name}: phong độ, kỳ vọng, lịch sử WC
-- Nếu không có tin tức về cầu thủ này → dùng kiến thức thực tế, KHÔNG bịa kết quả trận đấu
-- Có thể nhắc rivalry (Ronaldo vs Messi) nếu tạo thêm drama tự nhiên
-- Câu hỏi cuối: liên quan trực tiếp đến {name}"""
-    return _call_openai(prompt)
-
-
-def generate_factoid_post(news_items: list[NewsItem], extra_context: str = "") -> str:
-    news_text = _format_news(news_items)
-    days_left = days_until_wc()
-    countdown = f"⏳ Còn {days_left} ngày đến World Cup 2026!" if days_left > 0 else "🔥 World Cup 2026 đang diễn ra!"
-
+    status = f"⏳ {days_left} days to World Cup 2026!" if days_left > 0 else "🔥 World Cup 2026 is underway!"
     topics = [
-        "sân vận động đăng cai WC 2026 (MetLife, Rose Bowl, Azteca, SoFi...)",
-        "các thành phố đăng cai ở Mỹ/Canada/Mexico — thông tin thú vị",
-        "kỷ lục và thống kê đặc biệt về World Cup qua các năm",
-        "FIFA và chủ tịch Gianni Infantino — quyết định gây tranh cãi",
-        "thể thức 48 đội lần đầu tiên trong lịch sử WC",
-        "thông tin vé, múi giờ, lịch phát sóng tại Việt Nam",
+        "a host stadium (MetLife, Rose Bowl, Azteca, SoFi, AT&T...) and what makes it special",
+        "a host city in the USA/Canada/Mexico — surprising facts",
+        "a special World Cup record or statistic across history",
+        "FIFA and president Gianni Infantino — a notable or controversial decision",
+        "the first-ever 48-team format and what it changes",
+        "tickets, time zones, or how Vietnam fans can watch",
     ]
     topic = random.choice(topics)
+    prompt = f"""Write a "did you know?" fact post about World Cup 2026.
 
-    prompt = f"""Viết bài Facebook "fact thú vị" về World Cup 2026.
+{status}
 
-{countdown}
+TOPIC: {topic}
 
-CHỦ ĐỀ: {topic}
+NEWS (use if relevant):
+{_format_news(news_items)}{extra_context}
 
-TIN TỨC (ưu tiên dùng nếu liên quan):
-{news_text}{extra_context}
-
-Yêu cầu:
-- Thông tin phải CHÍNH XÁC — dùng kiến thức thực tế về WC 2026, không suy đoán
-- Phong cách "wow, bạn có biết không?" — hấp dẫn, ngắn gọn
-- Kết bằng câu hỏi hoặc bình chọn"""
+Instructions:
+- Facts MUST be accurate — use real knowledge about WC 2026, do not speculate
+- "Wow, did you know?" tone — engaging and concise
+- End with a question or poll"""
     return _call_openai(prompt)
 
 
-def generate_debate_post(news_items: list[NewsItem], extra_context: str = "") -> str:
-    news_text = _format_news(news_items)
-
-    debate_topics = [
-        "Ronaldo hay Messi: ai xứng đáng có World Cup hơn?",
-        "VAR đang cứu bóng đá hay phá hỏng bóng đá?",
-        "World Cup 48 đội: hay hơn hay loãng chất hơn?",
-        "Ai sẽ vô địch WC 2026: Brazil, Pháp hay Argentina?",
-        "Mbappé: thiên tài thực sự hay chỉ được thổi phồng?",
-        "Nên xem World Cup ở rạp, quán nhậu hay ở nhà?",
+def generate_debate_post(news_items: list, extra_context: str = "") -> Tuple[str, str]:
+    topics = [
+        "Who deserves to win WC 2026: Brazil, France, Argentina, England or Spain?",
+        "Is VAR saving or ruining football?",
+        "48 teams: better spectacle or watered-down quality?",
+        "Is Mbappé already the best player in the world?",
+        "Will an underdog nation shock the World Cup this year?",
+        "Best young star of the tournament so far?",
     ]
+    prompt = f"""Write a two-sided DEBATE post about World Cup 2026.
 
-    prompt = f"""Viết bài Facebook dạng TRANH LUẬN 2 phe về World Cup 2026.
+NEWS (use a real debate from here if hotter):
+{_format_news(news_items)}{extra_context}
 
-TIN TỨC (dùng nếu có chủ đề tranh luận thực tế hay hơn):
-{news_text}{extra_context}
+SUGGESTED TOPICS (pick one, or use a hotter topic from the news):
+{chr(10).join(f'- {t}' for t in topics)}
 
-CHỦ ĐỀ GỢI Ý (chọn 1, hoặc dùng chủ đề từ tin tức nếu hot hơn):
-{chr(10).join(f'- {t}' for t in debate_topics)}
-
-Định dạng BẮT BUỘC:
-- Tiêu đề là câu hỏi gây tranh cãi IN HOA
-- 🔵 TEAM A: 2-3 lý do ngắn, mạnh
-- 🔴 TEAM B: 2-3 lý do ngắn, mạnh
-- Kết: "Comment 🔵 hoặc 🔴 bên dưới!" """
+Required format:
+- Headline = a provocative question in ALL CAPS
+- 🔵 SIDE A: 2-3 short, strong points
+- 🔴 SIDE B: 2-3 short, strong points
+- End: "Comment 🔵 or 🔴 below!" """
     return _call_openai(prompt)
 
 
-def generate_buildup_post(news_items: list[NewsItem], extra_context: str = "") -> str:
-    news_text = _format_news(news_items)
+def generate_buildup_post(news_items: list, extra_context: str = "") -> Tuple[str, str]:
     days_left = days_until_wc()
-    countdown = f"⏳ Còn {days_left} ngày đến World Cup 2026!" if days_left > 0 else "🔥 World Cup 2026 đã bắt đầu!"
+    status = f"⏳ {days_left} days to World Cup 2026!" if days_left > 0 else "🔥 World Cup 2026 is underway!"
+    prompt = f"""Write a post about the World Cup 2026 atmosphere.
 
-    prompt = f"""Viết bài Facebook về không khí chuẩn bị cho World Cup 2026.
+{status}
 
-{countdown}
+NEWS (only write about info present here):
+{_format_news(news_items)}{extra_context}
 
-TIN TỨC (chỉ viết về thông tin có trong đây):
-{news_text}{extra_context}
-
-Yêu cầu:
-- Dựa vào tin tức thực tế, không bịa thêm sự kiện
-- Tạo cảm giác hứng khởi, háo hức
-- Kết bằng câu hỏi tương tác"""
+Base it on the real news above, build excitement, end with an engaging question."""
     return _call_openai(prompt)
 
 
@@ -241,7 +237,7 @@ def generate_image(post_type: str, hint: str = "") -> Optional[str]:
         if not photos and hint:
             return generate_image(post_type)
         if not photos:
-            logger.warning("No Pexels photos found for query: %s", query)
+            logger.warning("No Pexels photos for query: %s", query)
             return None
         url = random.choice(photos)["src"]["large2x"]
         logger.info("Pexels image [%s] query=%s", post_type, query)
@@ -251,24 +247,30 @@ def generate_image(post_type: str, hint: str = "") -> Optional[str]:
         return None
 
 
-def _call_openai(prompt: str) -> str:
+def _call_openai(prompt: str) -> Tuple[str, str]:
     try:
         response = client.chat.completions.create(
             model=TEXT_MODEL,
-            max_tokens=600,
+            max_tokens=700,
+            response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
         )
-        content = response.choices[0].message.content or ""
-        return apply_formatting(content)
+        raw = response.choices[0].message.content or "{}"
+        data = json.loads(raw)
+        post = (data.get("post") or "").strip()
+        subject = (data.get("image_subject") or "").strip()
+        if not post:
+            return "", ""
+        return apply_formatting(post), subject
     except Exception as e:
         logger.error("OpenAI API error: %s", e)
-        return ""
+        return "", ""
 
 
-def _format_matches(matches: list[dict]) -> str:
+def _format_matches(matches: list) -> str:
     lines = []
     for m in matches:
         if m["home_score"] is not None:
@@ -276,10 +278,10 @@ def _format_matches(matches: list[dict]) -> str:
         else:
             time_str = m.get("utc_date", "")[:16].replace("T", " ") if m.get("utc_date") else ""
             lines.append(f"- {m['home']} vs {m['away']} ({time_str} UTC)")
-    return "\n".join(lines) if lines else "Không có trận đấu."
+    return "\n".join(lines) if lines else "No matches."
 
 
-def _format_news(news_items: list[NewsItem]) -> str:
+def _format_news(news_items: list) -> str:
     if not news_items:
-        return "Không có tin tức mới."
+        return "No fresh news."
     return "\n".join(f"- [{item.source}] {item.title}" for item in news_items[:8])
